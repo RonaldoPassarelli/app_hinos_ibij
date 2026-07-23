@@ -136,3 +136,4 @@ Desenvolvimento realizado de forma colaborativa com assistência de inteligênci
 ## Licenciamento e conteúdo
 
 O licenciamento do código ainda não foi definido. A disponibilização deste repositório para consulta não concede direitos sobre letras de hinos, bases de dados ou futura identidade visual do projeto.
+Consulte também o [CHANGELOG.md](CHANGELOG.md) para acompanhar as versões e mudanças relevantes do projeto.
