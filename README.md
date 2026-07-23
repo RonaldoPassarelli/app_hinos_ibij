@@ -36,6 +36,7 @@ As consultas são públicas. A criação e a edição de cultos são reservadas 
 | Preparação e validação de dados | Python |
 
 Consulte [ARCHITECTURE.md](ARCHITECTURE.md) para conhecer a organização técnica e os principais fluxos do aplicativo.
+Consulte também o [CHANGELOG.md](CHANGELOG.md) para acompanhar as versões e mudanças relevantes do projeto.
 
 ## Segurança e dados
 
@@ -136,4 +137,3 @@ Desenvolvimento realizado de forma colaborativa com assistência de inteligênci
 ## Licenciamento e conteúdo
 
 O licenciamento do código ainda não foi definido. A disponibilização deste repositório para consulta não concede direitos sobre letras de hinos, bases de dados ou futura identidade visual do projeto.
-Consulte também o [CHANGELOG.md](CHANGELOG.md) para acompanhar as versões e mudanças relevantes do projeto.
