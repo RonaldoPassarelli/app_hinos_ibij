@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function usuarioEditor() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.ativo == true
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.papel in ['editor', 'admin'];
+    }
+
+    match /hinos_v2/{hinoId} {
+      allow read: if true;
+      allow write: if usuarioEditor();
+    }
+
+    match /cultos_v2/{cultoId} {
+      allow read: if true;
+      allow write: if usuarioEditor();
+    }
+
+    match /itens_culto_v2/{itemId} {
+      allow read: if true;
+      allow write: if usuarioEditor();
+    }
+
+    match /usuarios/{usuarioId} {
+      allow read: if request.auth != null && request.auth.uid == usuarioId;
+      allow write: if false;
+    }
+
+    match /{documento=**} {
+      allow read, write: if false;
+    }
+  }
+}

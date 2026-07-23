@@ -43,3 +43,55 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# ============================================================
+# Arquivos privados e locais do projeto App Hinos IBIJ
+# ============================================================
+
+# Variáveis de ambiente e credenciais
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+/android/key.properties
+/serviceAccount*.json
+/*service-account*.json
+/*firebase-adminsdk*.json
+/credentials*.json
+
+# Configuração do Firebase de produção
+/android/app/google-services.json
+/ios/Runner/GoogleService-Info.plist
+/lib/firebase_options.dart
+/.firebaserc
+/firebase.backup.json
+
+# Dados privados e exportações do Firestore
+/amostra_hinos.json
+/hinos_firestore.json
+/assets/indice_busca_hinos.json
+/firestore-export/
+/firestore-exports/
+/exports/
+/backups/
+*.overall_export_metadata
+*.export_metadata
+
+# Ferramentas Node usadas somente para exportação local
+/node_modules/
+/package.json
+/package-lock.json
+
+# Cópias e etapas intermediárias mantidas na raiz
+/*.txt
+/test/*.bak
+
+# Ambientes e resíduos Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Aplicativos compilados
+*.apk
+*.aab
