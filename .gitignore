@@ -95,3 +95,7 @@ venv/
 # Aplicativos compilados
 *.apk
 *.aab
+# Auditoria e atualização privada de tonalidades
+/TONS_CHECKED.xlsx
+/relatorio_tonalidades.csv
+/backup_tons_hinos_v2_*.json
