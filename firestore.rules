@@ -24,6 +24,14 @@ service cloud.firestore {
       allow write: if usuarioEditor();
     }
 
+    match /historico_hinos/{alteracaoId} {
+      allow read: if usuarioEditor();
+      allow create: if usuarioEditor()
+        && request.resource.data.alteradoPorUid == request.auth.uid
+        && request.resource.data.alteradoEm == request.time;
+      allow update, delete: if false;
+    }
+
     match /usuarios/{usuarioId} {
       allow read: if request.auth != null && request.auth.uid == usuarioId;
       allow write: if false;
