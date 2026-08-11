@@ -436,7 +436,8 @@ class _TelaConsultaHinosState extends State<TelaConsultaHinos> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Consulta de hinos')),
-      body: Center(
+      body: Align(
+        alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
           child: SingleChildScrollView(

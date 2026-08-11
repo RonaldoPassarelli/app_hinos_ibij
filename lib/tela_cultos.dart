@@ -5,6 +5,13 @@ import 'package:flutter/material.dart';
 
 import 'servico_busca_hinos.dart';
 
+const _toleranciaCultoEmAndamento = Duration(hours: 2);
+
+bool _cultoAindaPlanejado(DateTime dataHora) {
+  final limite = dataHora.add(_toleranciaCultoEmAndamento);
+  return DateTime.now().isBefore(limite);
+}
+
 class TelaCultos extends StatefulWidget {
   const TelaCultos({super.key, required this.podeEditar});
 
@@ -192,7 +199,7 @@ class _TelaCultosState extends State<TelaCultos> {
     DateTime dataHora,
   ) {
     if (dados['status'] == 'cancelado') return 'cancelado';
-    return dataHora.isAfter(DateTime.now()) ? 'planejado' : 'realizado';
+    return _cultoAindaPlanejado(dataHora) ? 'planejado' : 'realizado';
   }
 
   static String _rotuloStatus(String status) => switch (status) {
@@ -878,12 +885,12 @@ class _TelaDetalheCultoState extends State<TelaDetalheCulto> {
 
   String get _statusAtual {
     if (_cancelado) return 'Cancelado';
-    return _dataHoraAtual.isAfter(DateTime.now()) ? 'Planejado' : 'Realizado';
+    return _cultoAindaPlanejado(_dataHoraAtual) ? 'Planejado' : 'Realizado';
   }
 
   IconData get _iconeStatusAtual {
     if (_cancelado) return Icons.event_busy;
-    return _dataHoraAtual.isAfter(DateTime.now())
+    return _cultoAindaPlanejado(_dataHoraAtual)
         ? Icons.schedule
         : Icons.check_circle_outline;
   }
