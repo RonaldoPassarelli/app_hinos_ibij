@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 
 class ResultadoBuscaHino {
@@ -43,6 +45,37 @@ class _HinoIndice {
     );
   }
 
+  factory _HinoIndice.fromFirestore(
+    String documentoId,
+    Map<String, dynamic> dados,
+  ) {
+    final livro = dados['livro']?.toString() ?? documentoId.split('_').first;
+    final numero = dados['numero'];
+    final numeroFormatado =
+        dados['numeroFormatado']?.toString() ??
+        (numero is num ? numero.toInt().toString().padLeft(3, '0') : '');
+    final titulo = dados['titulo']?.toString() ?? 'Sem título';
+    final estrofes = (dados['estrofes'] as List<dynamic>? ?? const [])
+        .map((item) => item.toString())
+        .join(' ');
+    final tituloNormalizado = dados['tituloNormalizado']?.toString().trim();
+    final textoBusca = dados['textoBusca']?.toString().trim();
+
+    return _HinoIndice(
+      id: documentoId,
+      livro: livro,
+      numeroFormatado: numeroFormatado,
+      titulo: titulo,
+      tom: dados['tom']?.toString() ?? '',
+      tituloNormalizado: tituloNormalizado?.isNotEmpty == true
+          ? tituloNormalizado!
+          : ServicoBuscaHinos.normalizar(titulo),
+      textoBusca: textoBusca?.isNotEmpty == true
+          ? textoBusca!
+          : ServicoBuscaHinos.normalizar(estrofes),
+    );
+  }
+
   final String id;
   final String livro;
   final String numeroFormatado;
@@ -53,10 +86,21 @@ class _HinoIndice {
 }
 
 class ServicoBuscaHinos {
-  List<_HinoIndice>? _indice;
+  factory ServicoBuscaHinos() => _instancia;
 
-  Future<void> carregar() async {
-    if (_indice != null) return;
+  ServicoBuscaHinos._();
+
+  static final ServicoBuscaHinos _instancia = ServicoBuscaHinos._();
+
+  List<_HinoIndice>? _indice;
+  Future<void>? _carregamento;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _assinatura;
+
+  Future<void> carregar() {
+    return _carregamento ??= _carregarESincronizar();
+  }
+
+  Future<void> _carregarESincronizar() async {
     final conteudo = await rootBundle.loadString(
       'assets/indice_busca_hinos.json',
     );
@@ -64,6 +108,47 @@ class ServicoBuscaHinos {
     _indice = lista
         .map((item) => _HinoIndice.fromJson(item as Map<String, dynamic>))
         .toList();
+
+    final colecao = FirebaseFirestore.instance.collection('hinos_v2');
+
+    // Atualiza a base empacotada com os dados disponíveis no Firestore. Quando
+    // não houver internet, o próprio Firestore utiliza seu cache persistente.
+    try {
+      final consulta = await colecao.get();
+      _aplicarSnapshot(consulta);
+    } on FirebaseException {
+      // A base local continua disponível. A assinatura abaixo tentará novamente
+      // automaticamente quando a conexão for restabelecida.
+    }
+
+    _assinatura ??= colecao
+        .snapshots(includeMetadataChanges: true)
+        .listen(
+          _aplicarSnapshot,
+          onError: (_) {
+            // Uma falha temporária não invalida o índice já carregado.
+          },
+        );
+  }
+
+  void _aplicarSnapshot(QuerySnapshot<Map<String, dynamic>> snapshot) {
+    final recebidos = <String, _HinoIndice>{
+      for (final documento in snapshot.docs)
+        documento.id: _HinoIndice.fromFirestore(documento.id, documento.data()),
+    };
+
+    if (!snapshot.metadata.isFromCache) {
+      _indice = recebidos.values.toList();
+      return;
+    }
+
+    // Um snapshot vindo do cache pode conter somente parte da coleção. Nesse
+    // caso fazemos mesclagem para não descartar o índice completo do APK.
+    final mesclados = <String, _HinoIndice>{
+      for (final hino in _indice ?? const <_HinoIndice>[]) hino.id: hino,
+      ...recebidos,
+    };
+    _indice = mesclados.values.toList();
   }
 
   Future<List<ResultadoBuscaHino>> buscar(String consulta) async {

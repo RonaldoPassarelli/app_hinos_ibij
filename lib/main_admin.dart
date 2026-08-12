@@ -6,11 +6,14 @@ import 'package:flutter/material.dart';
 import 'firebase_options.dart';
 import 'tela_acesso.dart';
 import 'tela_admin_hinos.dart';
+import 'tela_admin_novo_hino.dart';
 import 'tela_admin_observacoes.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const AppAdministrativoHinos());
 }
 
@@ -70,8 +73,7 @@ class _PortaAdministrativa extends StatelessWidget {
 
             final dados = perfil.data?.data();
             final papel = dados?['papel']?.toString() ?? '';
-            final autorizado =
-                dados?['ativo'] == true &&
+            final autorizado = dados?['ativo'] == true &&
                 (papel == 'editor' || papel == 'admin');
             if (!autorizado) {
               return _TelaAcessoNegado(
@@ -99,12 +101,17 @@ class _TelaCarregando extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
   }
 }
 
 class _TelaAcessoNegado extends StatelessWidget {
-  const _TelaAcessoNegado({required this.usuario, required this.mensagem});
+  const _TelaAcessoNegado({
+    required this.usuario,
+    required this.mensagem,
+  });
 
   final User usuario;
   final String mensagem;
@@ -191,6 +198,7 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
             child: switch (_indice) {
               0 => const TelaAdminHinos(),
               1 => TelaAdminObservacoes(nomeUsuario: widget.nomeUsuario),
+              2 => TelaAdminNovoHino(nomeUsuario: widget.nomeUsuario),
               _ => _ModuloFuturo(titulo: _itens[_indice].titulo),
             },
           ),
@@ -221,10 +229,7 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
                         children: [
                           Text(
                             'Hinos IBIJ',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                           ),
                           Text('Administração', style: TextStyle(fontSize: 12)),
                         ],
@@ -245,7 +250,7 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
                     ),
                     leading: Icon(_itens[indice].icone),
                     title: Text(_itens[indice].titulo),
-                    trailing: indice <= 1
+                    trailing: indice <= 2
                         ? null
                         : const Icon(Icons.lock_clock_outlined, size: 17),
                     onTap: () => setState(() => _indice = indice),
