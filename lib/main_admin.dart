@@ -8,6 +8,7 @@ import 'tela_acesso.dart';
 import 'tela_admin_hinos.dart';
 import 'tela_admin_novo_hino.dart';
 import 'tela_admin_observacoes.dart';
+import 'tela_apresentacao.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -204,7 +205,6 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
         id: 'apresentacao',
         icone: Icons.slideshow_outlined,
         titulo: 'Apresentação',
-        disponivel: false,
       ),
     ];
   }
@@ -237,6 +237,7 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
       'hinos' => const TelaAdminHinos(),
       'observacoes' => TelaAdminObservacoes(nomeUsuario: widget.nomeUsuario),
       'novo_hino' => TelaAdminNovoHino(nomeUsuario: widget.nomeUsuario),
+      'apresentacao' => const TelaApresentacao(),
       _ => _ModuloFuturo(titulo: item.titulo),
     };
   }
