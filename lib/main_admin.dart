@@ -11,9 +11,7 @@ import 'tela_admin_observacoes.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const AppAdministrativoHinos());
 }
 
@@ -24,7 +22,7 @@ class AppAdministrativoHinos extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Hinos IBIJ — Administração',
+      title: 'Hinos IBIJ',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.green,
@@ -73,12 +71,13 @@ class _PortaAdministrativa extends StatelessWidget {
 
             final dados = perfil.data?.data();
             final papel = dados?['papel']?.toString() ?? '';
-            final autorizado = dados?['ativo'] == true &&
-                (papel == 'editor' || papel == 'admin');
+            final autorizado =
+                dados?['ativo'] == true &&
+                (papel == 'operador' || papel == 'editor' || papel == 'admin');
             if (!autorizado) {
               return _TelaAcessoNegado(
                 usuario: usuario,
-                mensagem: 'Esta conta não possui acesso administrativo ativo.',
+                mensagem: 'Esta conta não possui acesso ativo ao painel.',
               );
             }
 
@@ -101,17 +100,12 @@ class _TelaCarregando extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
-    );
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }
 
 class _TelaAcessoNegado extends StatelessWidget {
-  const _TelaAcessoNegado({
-    required this.usuario,
-    required this.mensagem,
-  });
+  const _TelaAcessoNegado({required this.usuario, required this.mensagem});
 
   final User usuario;
   final String mensagem;
@@ -136,7 +130,7 @@ class _TelaAcessoNegado extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'Acesso administrativo não autorizado',
+                    'Acesso ao painel não autorizado',
                     style: Theme.of(context).textTheme.headlineSmall,
                     textAlign: TextAlign.center,
                   ),
@@ -180,35 +174,76 @@ class TelaAdministrativa extends StatefulWidget {
 class _TelaAdministrativaState extends State<TelaAdministrativa> {
   var _indice = 0;
 
-  static const _itens = [
-    (icone: Icons.library_music_outlined, titulo: 'Hinos'),
-    (icone: Icons.note_alt_outlined, titulo: 'Observações'),
-    (icone: Icons.add_box_outlined, titulo: 'Novo hino'),
-    (icone: Icons.collections_bookmark_outlined, titulo: 'Hinários'),
-  ];
+  List<_ItemPainel> get _itens {
+    final podeAdministrar = widget.papel == 'editor' || widget.papel == 'admin';
+    return [
+      if (podeAdministrar) ...[
+        const _ItemPainel(
+          id: 'hinos',
+          icone: Icons.library_music_outlined,
+          titulo: 'Hinos',
+        ),
+        const _ItemPainel(
+          id: 'observacoes',
+          icone: Icons.note_alt_outlined,
+          titulo: 'Observações',
+        ),
+        const _ItemPainel(
+          id: 'novo_hino',
+          icone: Icons.add_box_outlined,
+          titulo: 'Novo hino',
+        ),
+        const _ItemPainel(
+          id: 'hinarios',
+          icone: Icons.collections_bookmark_outlined,
+          titulo: 'Hinários',
+          disponivel: false,
+        ),
+      ],
+      const _ItemPainel(
+        id: 'apresentacao',
+        icone: Icons.slideshow_outlined,
+        titulo: 'Apresentação',
+        disponivel: false,
+      ),
+    ];
+  }
+
+  String get _nomePapel => switch (widget.papel) {
+    'admin' => 'Administrador',
+    'editor' => 'Editor',
+    'operador' => 'Operador',
+    _ => widget.papel,
+  };
 
   @override
   Widget build(BuildContext context) {
+    final itens = _itens;
+    if (_indice >= itens.length) _indice = 0;
+    final itemSelecionado = itens[_indice];
     return Scaffold(
       body: Row(
         children: [
           _menuLateral(context),
           const VerticalDivider(width: 1),
-          Expanded(
-            child: switch (_indice) {
-              0 => const TelaAdminHinos(),
-              1 => TelaAdminObservacoes(nomeUsuario: widget.nomeUsuario),
-              2 => TelaAdminNovoHino(nomeUsuario: widget.nomeUsuario),
-              _ => _ModuloFuturo(titulo: _itens[_indice].titulo),
-            },
-          ),
+          Expanded(child: _conteudo(itemSelecionado)),
         ],
       ),
     );
   }
 
+  Widget _conteudo(_ItemPainel item) {
+    return switch (item.id) {
+      'hinos' => const TelaAdminHinos(),
+      'observacoes' => TelaAdminObservacoes(nomeUsuario: widget.nomeUsuario),
+      'novo_hino' => TelaAdminNovoHino(nomeUsuario: widget.nomeUsuario),
+      _ => _ModuloFuturo(titulo: item.titulo),
+    };
+  }
+
   Widget _menuLateral(BuildContext context) {
     final cores = Theme.of(context).colorScheme;
+    final itens = _itens;
     return SafeArea(
       child: SizedBox(
         width: 250,
@@ -229,9 +264,12 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
                         children: [
                           Text(
                             'Hinos IBIJ',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          Text('Administração', style: TextStyle(fontSize: 12)),
+                          Text('Painel', style: TextStyle(fontSize: 12)),
                         ],
                       ),
                     ),
@@ -239,7 +277,7 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
                 ),
               ),
               const SizedBox(height: 28),
-              for (var indice = 0; indice < _itens.length; indice++)
+              for (var indice = 0; indice < itens.length; indice++)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: ListTile(
@@ -248,9 +286,9 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    leading: Icon(_itens[indice].icone),
-                    title: Text(_itens[indice].titulo),
-                    trailing: indice <= 2
+                    leading: Icon(itens[indice].icone),
+                    title: Text(itens[indice].titulo),
+                    trailing: itens[indice].disponivel
                         ? null
                         : const Icon(Icons.lock_clock_outlined, size: 17),
                     onTap: () => setState(() => _indice = indice),
@@ -265,7 +303,7 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                subtitle: Text(widget.papel),
+                subtitle: Text(_nomePapel),
               ),
               OutlinedButton.icon(
                 onPressed: FirebaseAuth.instance.signOut,
@@ -278,6 +316,20 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
       ),
     );
   }
+}
+
+class _ItemPainel {
+  const _ItemPainel({
+    required this.id,
+    required this.icone,
+    required this.titulo,
+    this.disponivel = true,
+  });
+
+  final String id;
+  final IconData icone;
+  final String titulo;
+  final bool disponivel;
 }
 
 class _ModuloFuturo extends StatelessWidget {
