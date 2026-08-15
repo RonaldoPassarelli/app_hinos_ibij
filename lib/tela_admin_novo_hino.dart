@@ -54,13 +54,16 @@ class _TelaAdminNovoHinoState extends State<TelaAdminNovoHino> {
   final _formulario = GlobalKey<FormState>();
   final _numeroController = TextEditingController();
   final _tituloController = TextEditingController();
-  final _assuntosController = TextEditingController();
   final _letraController = TextEditingController();
 
   String _livro = 'VM';
   String _tom = 'C';
   bool _salvando = false;
+  bool _carregandoAssuntos = true;
+  List<String> _assuntosDisponiveis = [];
+  final Set<String> _assuntosSelecionados = {};
   String? _erro;
+  String? _erroAssuntos;
 
   @override
   void initState() {
@@ -68,11 +71,11 @@ class _TelaAdminNovoHinoState extends State<TelaAdminNovoHino> {
     for (final controller in [
       _numeroController,
       _tituloController,
-      _assuntosController,
       _letraController,
     ]) {
       controller.addListener(_atualizarPrevia);
     }
+    _carregarAssuntos();
   }
 
   @override
@@ -80,7 +83,6 @@ class _TelaAdminNovoHinoState extends State<TelaAdminNovoHino> {
     for (final controller in [
       _numeroController,
       _tituloController,
-      _assuntosController,
       _letraController,
     ]) {
       controller
@@ -101,12 +103,10 @@ class _TelaAdminNovoHinoState extends State<TelaAdminNovoHino> {
 
   String get _hinoId => '${_livro}_$_numeroFormatado';
 
-  List<String> get _assuntos => _assuntosController.text
-      .split(RegExp(r'[;\n]+'))
-      .map((item) => item.trim().toUpperCase())
-      .where((item) => item.isNotEmpty)
-      .toSet()
-      .toList();
+  List<String> get _assuntos {
+    final assuntos = _assuntosSelecionados.toList()..sort();
+    return assuntos;
+  }
 
   List<String> get _estrofes => _letraController.text
       .replaceAll('\r\n', '\n')
@@ -128,6 +128,131 @@ class _TelaAdminNovoHinoState extends State<TelaAdminNovoHino> {
 
   String? _obrigatorio(String? valor) {
     return valor?.trim().isNotEmpty == true ? null : 'Campo obrigatório.';
+  }
+
+  Future<void> _carregarAssuntos() async {
+    if (mounted) {
+      setState(() {
+        _carregandoAssuntos = true;
+        _erroAssuntos = null;
+      });
+    }
+    try {
+      final consulta = await FirebaseFirestore.instance
+          .collection('hinos_v2')
+          .get();
+      final assuntos = <String>{};
+      for (final documento in consulta.docs) {
+        final valores = documento.data()['assuntos'];
+        if (valores is Iterable) {
+          for (final valor in valores) {
+            final assunto = valor.toString().trim().toUpperCase();
+            if (assunto.isNotEmpty) assuntos.add(assunto);
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _assuntosDisponiveis = assuntos.toList()..sort();
+        _carregandoAssuntos = false;
+        _erroAssuntos = null;
+      });
+    } on FirebaseException catch (excecao) {
+      if (!mounted) return;
+      setState(() {
+        _carregandoAssuntos = false;
+        _erroAssuntos =
+            'Não foi possível carregar os assuntos: '
+            '${excecao.message ?? excecao.code}';
+      });
+    } catch (excecao) {
+      if (!mounted) return;
+      setState(() {
+        _carregandoAssuntos = false;
+        _erroAssuntos = 'Não foi possível carregar os assuntos: $excecao';
+      });
+    }
+  }
+
+  Future<void> _selecionarAssuntos() async {
+    final selecionados = Set<String>.from(_assuntosSelecionados);
+    var filtro = '';
+    final resultado = await showDialog<Set<String>>(
+      context: context,
+      builder: (contextoDialogo) => StatefulBuilder(
+        builder: (context, atualizarDialogo) {
+          final assuntosFiltrados = _assuntosDisponiveis
+              .where((assunto) => assunto.contains(filtro))
+              .toList();
+          return AlertDialog(
+            title: const Text('Selecionar assuntos'),
+            content: SizedBox(
+              width: 520,
+              height: 520,
+              child: Column(
+                children: [
+                  TextField(
+                    autofocus: true,
+                    keyboardType: TextInputType.text,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      labelText: 'Pesquisar assunto',
+                    ),
+                    onChanged: (valor) => atualizarDialogo(
+                      () => filtro = valor.trim().toUpperCase(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: assuntosFiltrados.isEmpty
+                        ? const Center(
+                            child: Text('Nenhum assunto encontrado.'),
+                          )
+                        : ListView.builder(
+                            itemCount: assuntosFiltrados.length,
+                            itemBuilder: (context, indice) {
+                              final assunto = assuntosFiltrados[indice];
+                              return CheckboxListTile(
+                                value: selecionados.contains(assunto),
+                                title: Text(assunto),
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                onChanged: (marcado) => atualizarDialogo(() {
+                                  if (marcado == true) {
+                                    selecionados.add(assunto);
+                                  } else {
+                                    selecionados.remove(assunto);
+                                  }
+                                }),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(contextoDialogo),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(contextoDialogo, selecionados),
+                child: Text('Confirmar (${selecionados.length})'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (resultado == null || !mounted) return;
+    setState(() {
+      _assuntosSelecionados
+        ..clear()
+        ..addAll(resultado);
+      _erro = null;
+    });
   }
 
   Future<void> _salvar() async {
@@ -229,11 +354,11 @@ class _TelaAdminNovoHinoState extends State<TelaAdminNovoHino> {
     _formulario.currentState?.reset();
     _numeroController.clear();
     _tituloController.clear();
-    _assuntosController.clear();
     _letraController.clear();
     setState(() {
       _livro = 'VM';
       _tom = 'C';
+      _assuntosSelecionados.clear();
       _erro = null;
     });
   }
@@ -335,16 +460,62 @@ class _TelaAdminNovoHinoState extends State<TelaAdminNovoHino> {
             validator: _obrigatorio,
           ),
           const SizedBox(height: 16),
-          TextFormField(
-            controller: _assuntosController,
-            enabled: !_salvando,
-            minLines: 2,
-            maxLines: 4,
-            decoration: const InputDecoration(
+          InputDecorator(
+            decoration: InputDecoration(
               labelText: 'Assuntos',
-              hintText: 'LOUVOR E ADORAÇÃO; GRATIDÃO',
-              helperText:
-                  'Separe os assuntos com ponto e vírgula ou nova linha.',
+              helperText: _assuntos.isEmpty
+                  ? 'Selecione pelo menos um assunto existente.'
+                  : '${_assuntos.length} assunto(s) selecionado(s).',
+              errorText: _erroAssuntos,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_assuntos.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final assunto in _assuntos)
+                          InputChip(
+                            label: Text(assunto),
+                            onDeleted: _salvando
+                                ? null
+                                : () => setState(
+                                    () => _assuntosSelecionados.remove(assunto),
+                                  ),
+                          ),
+                      ],
+                    ),
+                  ),
+                OutlinedButton.icon(
+                  onPressed:
+                      _salvando ||
+                          _carregandoAssuntos ||
+                          _assuntosDisponiveis.isEmpty
+                      ? null
+                      : _selecionarAssuntos,
+                  icon: _carregandoAssuntos
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.checklist),
+                  label: Text(
+                    _carregandoAssuntos
+                        ? 'Carregando assuntos...'
+                        : 'Selecionar assuntos',
+                  ),
+                ),
+                if (_erroAssuntos != null)
+                  TextButton.icon(
+                    onPressed: _carregarAssuntos,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Tentar novamente'),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
