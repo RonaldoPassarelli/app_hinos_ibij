@@ -8,10 +8,12 @@ import 'servico_busca_hinos.dart';
 import 'tela_acesso.dart';
 import 'tela_cultos.dart';
 import 'tela_letra_hino.dart';
+import 'tema_aplicativo.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await ControladorTema.instancia.carregar();
   runApp(const AppHinos());
 }
 
@@ -20,17 +22,16 @@ class AppHinos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Hinos IBIJ',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.green,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ControladorTema.instancia,
+      builder: (context, modo, _) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Hinos IBIJ',
+        theme: criarTema(brilho: Brightness.light),
+        darkTheme: criarTema(brilho: Brightness.dark),
+        themeMode: modo,
+        home: const TelaPrincipal(),
       ),
-      home: const TelaPrincipal(),
     );
   }
 }
@@ -435,7 +436,10 @@ class _TelaConsultaHinosState extends State<TelaConsultaHinos> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Consulta de hinos')),
+      appBar: AppBar(
+        title: const Text('Consulta de hinos'),
+        actions: const [BotaoTema()],
+      ),
       body: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
@@ -468,6 +472,7 @@ class _TelaConsultaHinosState extends State<TelaConsultaHinos> {
                   onSelectionChanged: _carregando
                       ? null
                       : (selecao) {
+                          FocusManager.instance.primaryFocus?.unfocus();
                           setState(() {
                             _modo = selecao.first;
                             _limparResultados();
@@ -612,6 +617,7 @@ class _TelaConsultaHinosState extends State<TelaConsultaHinos> {
         ),
         const SizedBox(height: 20),
         TextField(
+          key: const ValueKey('consulta_hinos_numero'),
           controller: _numeroController,
           keyboardType: TextInputType.number,
           textInputAction: TextInputAction.search,
@@ -684,7 +690,9 @@ class _TelaConsultaHinosState extends State<TelaConsultaHinos> {
     return Column(
       children: [
         TextField(
+          key: const ValueKey('consulta_hinos_texto'),
           controller: _textoController,
+          keyboardType: TextInputType.text,
           textInputAction: TextInputAction.search,
           decoration: const InputDecoration(
             labelText: 'Título ou trecho da letra',

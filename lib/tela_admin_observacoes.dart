@@ -252,9 +252,24 @@ class _DetalheCulto extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 18),
-        Text(
-          'Hinos deste culto',
-          style: Theme.of(context).textTheme.titleLarge,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Hinos deste culto',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _corrigirOutroHino(
+                context,
+                culto: culto,
+                nomeUsuario: nomeUsuario,
+              ),
+              icon: const Icon(Icons.manage_search_outlined),
+              label: const Text('Corrigir outro hino'),
+            ),
+          ],
         ),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -313,6 +328,152 @@ class _DetalheCulto extends StatelessWidget {
                   .toList(),
             );
           },
+        ),
+      ],
+    );
+  }
+}
+
+Future<void> _corrigirOutroHino(
+  BuildContext context, {
+  required Map<String, dynamic> culto,
+  required String nomeUsuario,
+}) async {
+  final hinoId = await showDialog<String>(
+    context: context,
+    builder: (_) => const _DialogoHinoPorNumero(),
+  );
+  if (hinoId == null || !context.mounted) return;
+  await _abrirEditorLetra(
+    context,
+    hinoId: hinoId,
+    culto: culto,
+    nomeUsuario: nomeUsuario,
+  );
+}
+
+class _DialogoHinoPorNumero extends StatefulWidget {
+  const _DialogoHinoPorNumero();
+
+  @override
+  State<_DialogoHinoPorNumero> createState() => _DialogoHinoPorNumeroState();
+}
+
+class _DialogoHinoPorNumeroState extends State<_DialogoHinoPorNumero> {
+  final _numeroController = TextEditingController();
+  var _livro = 'CC';
+  var _localizando = false;
+  String? _erro;
+
+  @override
+  void dispose() {
+    _numeroController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _localizar() async {
+    if (_localizando) return;
+    final numero = int.tryParse(_numeroController.text.trim());
+    if (numero == null || numero <= 0) {
+      setState(() => _erro = 'Informe um número válido.');
+      return;
+    }
+    final id = '${_livro}_${numero.toString().padLeft(3, '0')}';
+    setState(() {
+      _localizando = true;
+      _erro = null;
+    });
+    try {
+      final documento = await FirebaseFirestore.instance
+          .collection('hinos_v2')
+          .doc(id)
+          .get();
+      if (!mounted) return;
+      if (!documento.exists) {
+        setState(() => _erro = 'O hino $id não foi encontrado.');
+        return;
+      }
+      Navigator.pop(context, id);
+    } on FirebaseException catch (excecao) {
+      if (mounted) {
+        setState(
+          () => _erro =
+              'Não foi possível localizar: '
+              '${excecao.message ?? excecao.code}',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _localizando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Corrigir outro hino'),
+      content: SizedBox(
+        width: 460,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Informe o hinário e o número. A correção será vinculada '
+              'à observação deste culto.',
+            ),
+            const SizedBox(height: 18),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'CC', label: Text('Cantor Cristão')),
+                ButtonSegment(value: 'VM', label: Text('Voz de Melodia')),
+              ],
+              selected: {_livro},
+              onSelectionChanged: (selecao) => setState(() {
+                _livro = selecao.first;
+                _erro = null;
+              }),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _numeroController,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.search,
+              enabled: !_localizando,
+              decoration: const InputDecoration(
+                labelText: 'Número do hino',
+                hintText: 'Ex.: 60',
+                prefixIcon: Icon(Icons.numbers),
+              ),
+              onChanged: (_) {
+                if (_erro != null) setState(() => _erro = null);
+              },
+              onSubmitted: (_) => _localizar(),
+            ),
+            if (_erro != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _erro!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _localizando ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: _localizando ? null : _localizar,
+          icon: _localizando
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.edit_note_outlined),
+          label: Text(_localizando ? 'Localizando...' : 'Abrir correção'),
         ),
       ],
     );

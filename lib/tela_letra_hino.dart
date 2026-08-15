@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'tema_aplicativo.dart';
+
 class TelaLetraHino extends StatelessWidget {
   const TelaLetraHino({super.key, required this.hino});
 
@@ -17,7 +19,10 @@ class TelaLetraHino extends StatelessWidget {
     final tom = hino['tom']?.toString() ?? '';
 
     return Scaffold(
-      appBar: AppBar(title: Text('$livro $numero')),
+      appBar: AppBar(
+        title: Text('$livro $numero'),
+        actions: const [BotaoTema()],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),

@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'servico_busca_hinos.dart';
+import 'tela_letra_hino.dart';
+import 'tema_aplicativo.dart';
 
 const _toleranciaCultoEmAndamento = Duration(hours: 2);
 
@@ -221,15 +223,15 @@ class _TelaCultosState extends State<TelaCultos> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cultos'),
-        actions: widget.podeEditar
-            ? [
-                IconButton(
-                  tooltip: 'Novo culto',
-                  onPressed: _abrirNovoCulto,
-                  icon: const Icon(Icons.add),
-                ),
-              ]
-            : null,
+        actions: [
+          const BotaoTema(),
+          if (widget.podeEditar)
+            IconButton(
+              tooltip: 'Novo culto',
+              onPressed: _abrirNovoCulto,
+              icon: const Icon(Icons.add),
+            ),
+        ],
       ),
       floatingActionButton: widget.podeEditar
           ? FloatingActionButton.extended(
@@ -900,15 +902,15 @@ class _TelaDetalheCultoState extends State<TelaDetalheCulto> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_tituloAtual),
-        actions: widget.podeEditar
-            ? [
-                IconButton(
-                  tooltip: 'Editar culto',
-                  onPressed: _processando ? null : _editarCulto,
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-              ]
-            : null,
+        actions: [
+          const BotaoTema(),
+          if (widget.podeEditar)
+            IconButton(
+              tooltip: 'Editar culto',
+              onPressed: _processando ? null : _editarCulto,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+        ],
       ),
       floatingActionButton: widget.podeEditar
           ? FloatingActionButton.extended(
@@ -1209,6 +1211,34 @@ class _TelaSelecionarHinoCultoState extends State<TelaSelecionarHinoCulto> {
     });
   }
 
+  Future<void> _abrirLetra(_OpcaoHino hino) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    try {
+      final documento = await _firestore
+          .collection('hinos_v2')
+          .doc(hino.id)
+          .get();
+      if (!mounted) return;
+      if (!documento.exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('O hino ${hino.id} não foi encontrado.')),
+        );
+        return;
+      }
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TelaLetraHino(hino: documento.data()!),
+        ),
+      );
+    } catch (erro) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível carregar a letra: $erro')),
+      );
+    }
+  }
+
   Future<void> _executar(Future<List<_OpcaoHino>> Function() consulta) async {
     FocusScope.of(context).unfocus();
     setState(() {
@@ -1233,7 +1263,10 @@ class _TelaSelecionarHinoCultoState extends State<TelaSelecionarHinoCulto> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Escolher hino')),
+      appBar: AppBar(
+        title: const Text('Escolher hino'),
+        actions: const [BotaoTema()],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
@@ -1262,6 +1295,7 @@ class _TelaSelecionarHinoCultoState extends State<TelaSelecionarHinoCulto> {
                 onSelectionChanged: _carregando
                     ? null
                     : (selecao) {
+                        FocusManager.instance.primaryFocus?.unfocus();
                         setState(() {
                           _modo = selecao.first;
                           _limpar();
@@ -1302,7 +1336,17 @@ class _TelaSelecionarHinoCultoState extends State<TelaSelecionarHinoCulto> {
                         '${hino.livro} ${hino.numeroFormatado} — ${hino.titulo}',
                       ),
                       subtitle: Text('Tonalidade: ${hino.tom}'),
-                      trailing: const Icon(Icons.add_circle_outline),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Ver letra',
+                            onPressed: () => _abrirLetra(hino),
+                            icon: const Icon(Icons.visibility_outlined),
+                          ),
+                          const Icon(Icons.add_circle_outline),
+                        ],
+                      ),
                       onTap: () => Navigator.pop(context, hino.id),
                     ),
                   ),
@@ -1329,8 +1373,10 @@ class _TelaSelecionarHinoCultoState extends State<TelaSelecionarHinoCulto> {
         ),
         const SizedBox(height: 16),
         TextField(
+          key: const ValueKey('escolher_hino_numero'),
           controller: _numeroController,
           keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.search,
           decoration: const InputDecoration(
             labelText: 'Número',
             border: OutlineInputBorder(),
@@ -1375,7 +1421,10 @@ class _TelaSelecionarHinoCultoState extends State<TelaSelecionarHinoCulto> {
     return Column(
       children: [
         TextField(
+          key: const ValueKey('escolher_hino_texto'),
           controller: _textoController,
+          keyboardType: TextInputType.text,
+          textInputAction: TextInputAction.search,
           decoration: const InputDecoration(
             labelText: 'Título ou trecho da letra',
             border: OutlineInputBorder(),

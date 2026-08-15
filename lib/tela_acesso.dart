@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'tema_aplicativo.dart';
+
 class TelaAcesso extends StatefulWidget {
   const TelaAcesso({super.key});
 
@@ -155,7 +157,7 @@ class _TelaAcessoState extends State<TelaAcesso> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Acesso')),
+      appBar: AppBar(title: const Text('Acesso'), actions: const [BotaoTema()]),
       body: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {

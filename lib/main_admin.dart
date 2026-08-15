@@ -9,10 +9,12 @@ import 'tela_admin_hinos.dart';
 import 'tela_admin_novo_hino.dart';
 import 'tela_admin_observacoes.dart';
 import 'tela_apresentacao.dart';
+import 'tema_aplicativo.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await ControladorTema.instancia.carregar();
   runApp(const AppAdministrativoHinos());
 }
 
@@ -21,20 +23,16 @@ class AppAdministrativoHinos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Hinos IBIJ',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.green,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-        inputDecorationTheme: const InputDecorationTheme(
-          border: OutlineInputBorder(),
-        ),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ControladorTema.instancia,
+      builder: (context, modo, _) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Hinos IBIJ',
+        theme: criarTema(brilho: Brightness.light),
+        darkTheme: criarTema(brilho: Brightness.dark),
+        themeMode: modo,
+        home: const _PortaAdministrativa(),
       ),
-      home: const _PortaAdministrativa(),
     );
   }
 }
@@ -274,6 +272,7 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
                         ],
                       ),
                     ),
+                    const BotaoTema(),
                   ],
                 ),
               ),
