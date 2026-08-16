@@ -26,12 +26,16 @@ class _TelaAcessoState extends State<TelaAcesso> {
   }
 
   Future<void> _entrar() async {
-    final email = _emailController.text.trim();
+    final identificador = _emailController.text.trim();
     final senha = _senhaController.text;
-    if (email.isEmpty || senha.isEmpty) {
-      setState(() => _erro = 'Informe o e-mail e a senha.');
+    if (identificador.isEmpty || senha.isEmpty) {
+      setState(() => _erro = 'Informe o usuário ou e-mail e a senha.');
       return;
     }
+
+    final email = identificador.contains('@')
+        ? identificador
+        : '${identificador.toLowerCase()}@ibij.app';
 
     setState(() {
       _processando = true;
@@ -47,7 +51,7 @@ class _TelaAcessoState extends State<TelaAcesso> {
       if (!mounted) return;
       setState(
         () => _erro = switch (erro.code) {
-          'invalid-credential' => 'E-mail ou senha incorretos.',
+          'invalid-credential' => 'Usuário, e-mail ou senha incorretos.',
           'invalid-email' => 'O endereço de e-mail é inválido.',
           'too-many-requests' =>
             'Muitas tentativas. Aguarde um pouco e tente novamente.',
@@ -62,8 +66,9 @@ class _TelaAcessoState extends State<TelaAcesso> {
   Future<void> _sair() => FirebaseAuth.instance.signOut();
 
   Future<void> _recuperarSenha() async {
+    final identificador = _emailController.text.trim();
     final emailController = TextEditingController(
-      text: _emailController.text.trim(),
+      text: identificador.contains('@') ? identificador : '',
     );
     final email = await showDialog<String>(
       context: context,
@@ -191,17 +196,17 @@ class _TelaAcessoState extends State<TelaAcesso> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'A consulta é pública. Entre somente para criar ou editar cultos.',
+                    'Entre para administrar ou apresentar os hinos dos cultos.',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
                   TextField(
                     controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email],
+                    keyboardType: TextInputType.text,
+                    autofillHints: const [AutofillHints.username],
                     decoration: const InputDecoration(
-                      labelText: 'E-mail',
-                      prefixIcon: Icon(Icons.email_outlined),
+                      labelText: 'Usuário ou e-mail',
+                      prefixIcon: Icon(Icons.person_outline),
                       border: OutlineInputBorder(),
                     ),
                   ),
