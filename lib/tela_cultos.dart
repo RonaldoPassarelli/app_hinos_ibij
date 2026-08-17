@@ -808,6 +808,38 @@ class _TelaDetalheCultoState extends State<TelaDetalheCulto> {
     if (confirmar == true) await _itens.doc(itemId).delete();
   }
 
+  Future<void> _abrirLetraItem(Map<String, dynamic> item) async {
+    final hinoId = item['hinoId']?.toString().trim() ?? '';
+    if (hinoId.isEmpty) {
+      _mostrarMensagem('Este item não possui um hino associado.');
+      return;
+    }
+
+    try {
+      final documento = await _firestore
+          .collection('hinos_v2')
+          .doc(hinoId)
+          .get();
+      if (!mounted) return;
+      if (!documento.exists) {
+        _mostrarMensagem('Hino $hinoId não encontrado.');
+        return;
+      }
+
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TelaLetraHino(hino: documento.data()!),
+        ),
+      );
+    } on FirebaseException catch (erro) {
+      if (!mounted) return;
+      _mostrarMensagem(
+        'Erro ao carregar a letra: ${erro.message ?? erro.code}',
+      );
+    }
+  }
+
   Future<void> _editarTom(
     DocumentReference<Map<String, dynamic>> referencia,
     String tomAtual,
@@ -993,7 +1025,9 @@ class _TelaDetalheCultoState extends State<TelaDetalheCulto> {
                                   PopupMenuButton<String>(
                                     tooltip: 'Opções',
                                     onSelected: (opcao) {
-                                      if (opcao == 'tom') {
+                                      if (opcao == 'letra') {
+                                        _abrirLetraItem(item);
+                                      } else if (opcao == 'tom') {
                                         _editarTom(
                                           documento.reference,
                                           item['tomEscolhido'] as String,
@@ -1003,6 +1037,15 @@ class _TelaDetalheCultoState extends State<TelaDetalheCulto> {
                                       }
                                     },
                                     itemBuilder: (_) => const [
+                                      PopupMenuItem(
+                                        value: 'letra',
+                                        child: ListTile(
+                                          leading: Icon(
+                                            Icons.visibility_outlined,
+                                          ),
+                                          title: Text('Ver letra'),
+                                        ),
+                                      ),
                                       PopupMenuItem(
                                         value: 'tom',
                                         child: ListTile(
@@ -1028,7 +1071,11 @@ class _TelaDetalheCultoState extends State<TelaDetalheCulto> {
                                   ),
                                 ],
                               )
-                            : null,
+                            : IconButton(
+                                tooltip: 'Ver letra',
+                                onPressed: () => _abrirLetraItem(item),
+                                icon: const Icon(Icons.visibility_outlined),
+                              ),
                       ),
                     );
                   },
