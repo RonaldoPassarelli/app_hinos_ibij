@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'servico_busca_hinos.dart';
 import 'tela_letra_hino.dart';
@@ -15,9 +16,16 @@ bool _cultoAindaPlanejado(DateTime dataHora) {
 }
 
 class TelaCultos extends StatefulWidget {
-  const TelaCultos({super.key, required this.podeEditar});
+  const TelaCultos({
+    super.key,
+    required this.podeEditar,
+    required this.igrejaIdsPermitidas,
+    required this.igrejaPadraoId,
+  });
 
   final bool podeEditar;
+  final List<String> igrejaIdsPermitidas;
+  final String igrejaPadraoId;
 
   @override
   State<TelaCultos> createState() => _TelaCultosState();
@@ -26,11 +34,16 @@ class TelaCultos extends StatefulWidget {
 class _TelaCultosState extends State<TelaCultos> {
   final _firestore = FirebaseFirestore.instance;
   var _filtroStatus = 'planejado';
+  var _igrejas = <_OpcaoIgreja>[];
+  String? _igrejaSelecionadaId;
+  String? _erroIgrejas;
+  var _carregandoIgrejas = true;
   Timer? _relogio;
 
   @override
   void initState() {
     super.initState();
+    _carregarIgrejas();
     _relogio = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -45,7 +58,60 @@ class _TelaCultosState extends State<TelaCultos> {
   CollectionReference<Map<String, dynamic>> get _cultos =>
       _firestore.collection('cultos_v2');
 
+  Future<void> _carregarIgrejas() async {
+    try {
+      final consulta = await _firestore.collection('igrejas').get();
+      final permitidas = widget.igrejaIdsPermitidas.toSet();
+      final igrejas =
+          consulta.docs
+              .where((documento) {
+                final dados = documento.data();
+                if (dados['ativo'] != true) return false;
+                return permitidas.isEmpty || permitidas.contains(documento.id);
+              })
+              .map(_OpcaoIgreja.fromDocumento)
+              .toList()
+            ..sort((a, b) => a.nomeCurto.compareTo(b.nomeCurto));
+
+      final preferencias = await SharedPreferences.getInstance();
+      final salva = preferencias.getString('igreja_selecionada_cultos');
+      final idsDisponiveis = igrejas.map((igreja) => igreja.id).toSet();
+      String? selecionada;
+      if (igrejas.length == 1) {
+        selecionada = igrejas.first.id;
+      } else if (idsDisponiveis.contains(salva)) {
+        selecionada = salva;
+      } else if (idsDisponiveis.contains(widget.igrejaPadraoId)) {
+        selecionada = widget.igrejaPadraoId;
+      } else if (igrejas.isNotEmpty) {
+        selecionada = igrejas.first.id;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _igrejas = igrejas;
+        _igrejaSelecionadaId = selecionada;
+        _erroIgrejas = null;
+        _carregandoIgrejas = false;
+      });
+    } on FirebaseException catch (erro) {
+      if (!mounted) return;
+      setState(() {
+        _erroIgrejas = erro.message ?? erro.code;
+        _carregandoIgrejas = false;
+      });
+    }
+  }
+
+  Future<void> _selecionarIgreja(String igrejaId) async {
+    setState(() => _igrejaSelecionadaId = igrejaId);
+    final preferencias = await SharedPreferences.getInstance();
+    await preferencias.setString('igreja_selecionada_cultos', igrejaId);
+  }
+
   Future<void> _abrirNovoCulto() async {
+    final igrejaId = _igrejaSelecionadaId;
+    if (igrejaId == null) return;
     final tituloController = TextEditingController();
     var dataEscolhida = DateTime.now().add(const Duration(days: 1));
     dataEscolhida = DateTime(
@@ -165,6 +231,7 @@ class _TelaCultosState extends State<TelaCultos> {
 
     try {
       await _cultos.add({
+        'igrejaId': igrejaId,
         'titulo': resultado.titulo,
         'dataHora': Timestamp.fromDate(resultado.dataHora),
         'observacoes': '',
@@ -220,6 +287,7 @@ class _TelaCultosState extends State<TelaCultos> {
 
   @override
   Widget build(BuildContext context) {
+    final igrejaId = _igrejaSelecionadaId;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cultos'),
@@ -228,20 +296,62 @@ class _TelaCultosState extends State<TelaCultos> {
           if (widget.podeEditar)
             IconButton(
               tooltip: 'Novo culto',
-              onPressed: _abrirNovoCulto,
+              onPressed: igrejaId == null ? null : _abrirNovoCulto,
               icon: const Icon(Icons.add),
             ),
         ],
       ),
       floatingActionButton: widget.podeEditar
           ? FloatingActionButton.extended(
-              onPressed: _abrirNovoCulto,
+              onPressed: igrejaId == null ? null : _abrirNovoCulto,
               icon: const Icon(Icons.add),
               label: const Text('Novo culto'),
             )
           : null,
       body: Column(
         children: [
+          if (_carregandoIgrejas) const LinearProgressIndicator(),
+          if (_erroIgrejas != null)
+            ListTile(
+              leading: const Icon(Icons.cloud_off_outlined),
+              title: const Text('Não foi possível carregar as igrejas'),
+              subtitle: Text(_erroIgrejas!),
+              trailing: IconButton(
+                tooltip: 'Tentar novamente',
+                onPressed: () {
+                  setState(() => _carregandoIgrejas = true);
+                  _carregarIgrejas();
+                },
+                icon: const Icon(Icons.refresh),
+              ),
+            ),
+          if (!_carregandoIgrejas && _erroIgrejas == null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: DropdownMenu<String>(
+                key: ValueKey(igrejaId),
+                initialSelection: igrejaId,
+                expandedInsets: EdgeInsets.zero,
+                label: const Text('Igreja'),
+                leadingIcon: const Icon(Icons.church_outlined),
+                dropdownMenuEntries: _igrejas
+                    .map(
+                      (igreja) => DropdownMenuEntry<String>(
+                        value: igreja.id,
+                        label: igreja.nomeCurto,
+                        labelWidget: Text(
+                          '${igreja.nomeCurto} — ${igreja.nome}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onSelected: (id) {
+                  if (id != null) _selecionarIgreja(id);
+                },
+              ),
+            ),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -259,92 +369,106 @@ class _TelaCultosState extends State<TelaCultos> {
             ),
           ),
           Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _cultos.orderBy('dataHora').snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text('Erro ao carregar cultos: ${snapshot.error}'),
-                    ),
-                  );
-                }
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final documentos = (snapshot.data?.docs ?? []).where((
-                  documento,
-                ) {
-                  if (_filtroStatus == 'todos') return true;
-                  final dados = documento.data();
-                  final dataHora = (dados['dataHora'] as Timestamp).toDate();
-                  return _statusCalculado(dados, dataHora) == _filtroStatus;
-                }).toList();
-                if (documentos.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.event_note, size: 64),
-                          SizedBox(height: 16),
-                          Text(
-                            'Nenhum culto cadastrado.',
-                            style: TextStyle(fontSize: 18),
+            child: igrejaId == null
+                ? const Center(child: Text('Nenhuma igreja disponível.'))
+                : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: _cultos
+                        .where('igrejaId', isEqualTo: igrejaId)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              'Erro ao carregar cultos: ${snapshot.error}',
+                            ),
                           ),
-                          SizedBox(height: 8),
-                          Text('Nenhum culto encontrado neste filtro.'),
-                        ],
-                      ),
-                    ),
-                  );
-                }
+                        );
+                      }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-                  itemCount: documentos.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, indice) {
-                    final documento = documentos[indice];
-                    final dados = documento.data();
-                    final timestamp = dados['dataHora'] as Timestamp;
-                    final dataHora = timestamp.toDate();
-                    final status = _statusCalculado(dados, dataHora);
-                    return Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          child: Icon(_iconeStatus(status)),
-                        ),
-                        title: Text(dados['titulo'] as String),
-                        subtitle: Text(
-                          '${_formatarData(dataHora)} às ${_formatarHora(dataHora)} · ${_rotuloStatus(status)}',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => TelaDetalheCulto(
-                                cultoId: documento.id,
-                                titulo: dados['titulo'] as String,
-                                dataHora: dataHora,
-                                observacoes:
-                                    (dados['observacoes'] as String?) ?? '',
-                                cancelado: dados['status'] == 'cancelado',
-                                podeEditar: widget.podeEditar,
+                      final todos = [...?snapshot.data?.docs]
+                        ..sort((a, b) {
+                          final dataA = a.data()['dataHora'] as Timestamp;
+                          final dataB = b.data()['dataHora'] as Timestamp;
+                          return dataA.compareTo(dataB);
+                        });
+                      final documentos = todos.where((documento) {
+                        if (_filtroStatus == 'todos') return true;
+                        final dados = documento.data();
+                        final dataHora = (dados['dataHora'] as Timestamp)
+                            .toDate();
+                        return _statusCalculado(dados, dataHora) ==
+                            _filtroStatus;
+                      }).toList();
+                      if (documentos.isEmpty) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.event_note, size: 64),
+                                SizedBox(height: 16),
+                                Text(
+                                  'Nenhum culto cadastrado.',
+                                  style: TextStyle(fontSize: 18),
+                                ),
+                                SizedBox(height: 8),
+                                Text('Nenhum culto encontrado neste filtro.'),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      return ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                        itemCount: documentos.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, indice) {
+                          final documento = documentos[indice];
+                          final dados = documento.data();
+                          final timestamp = dados['dataHora'] as Timestamp;
+                          final dataHora = timestamp.toDate();
+                          final status = _statusCalculado(dados, dataHora);
+                          return Card(
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                child: Icon(_iconeStatus(status)),
                               ),
+                              title: Text(dados['titulo'] as String),
+                              subtitle: Text(
+                                '${_formatarData(dataHora)} às ${_formatarHora(dataHora)} · ${_rotuloStatus(status)}',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => TelaDetalheCulto(
+                                      cultoId: documento.id,
+                                      igrejaId: igrejaId,
+                                      titulo: dados['titulo'] as String,
+                                      dataHora: dataHora,
+                                      observacoes:
+                                          (dados['observacoes'] as String?) ??
+                                          '',
+                                      cancelado: dados['status'] == 'cancelado',
+                                      podeEditar: widget.podeEditar,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           );
                         },
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -359,10 +483,34 @@ class _DadosNovoCulto {
   final DateTime dataHora;
 }
 
+class _OpcaoIgreja {
+  const _OpcaoIgreja({
+    required this.id,
+    required this.nome,
+    required this.nomeCurto,
+  });
+
+  factory _OpcaoIgreja.fromDocumento(
+    QueryDocumentSnapshot<Map<String, dynamic>> documento,
+  ) {
+    final dados = documento.data();
+    return _OpcaoIgreja(
+      id: documento.id,
+      nome: dados['nome']?.toString() ?? documento.id,
+      nomeCurto: dados['nomeCurto']?.toString() ?? documento.id,
+    );
+  }
+
+  final String id;
+  final String nome;
+  final String nomeCurto;
+}
+
 class TelaDetalheCulto extends StatefulWidget {
   const TelaDetalheCulto({
     super.key,
     required this.cultoId,
+    required this.igrejaId,
     required this.titulo,
     required this.dataHora,
     required this.observacoes,
@@ -371,6 +519,7 @@ class TelaDetalheCulto extends StatefulWidget {
   });
 
   final String cultoId;
+  final String igrejaId;
   final String titulo;
   final DateTime dataHora;
   final String observacoes;
@@ -455,6 +604,7 @@ class _TelaDetalheCultoState extends State<TelaDetalheCulto> {
           .get();
       final anteriores =
           usosAnteriores.docs.map((doc) => doc.data()).where((uso) {
+            if (uso['igrejaId'] != widget.igrejaId) return false;
             final data = (uso['dataCulto'] as Timestamp).toDate();
             return data.isBefore(_dataHoraAtual);
           }).toList()..sort((a, b) {
@@ -478,6 +628,7 @@ class _TelaDetalheCultoState extends State<TelaDetalheCulto> {
 
       await _itens.add({
         'cultoId': widget.cultoId,
+        'igrejaId': widget.igrejaId,
         'hinoId': hino['id'],
         'obraId': hino['obraId'],
         'livro': hino['livro'],

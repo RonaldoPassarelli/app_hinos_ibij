@@ -52,7 +52,13 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, autenticacao) {
         final usuario = autenticacao.data;
-        if (usuario == null) return _conteudo(false);
+        if (usuario == null) {
+          return _conteudo(
+            podeEditar: false,
+            igrejaIdsPermitidas: const [],
+            igrejaPadraoId: 'ibij',
+          );
+        }
 
         return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
@@ -61,23 +67,51 @@ class _TelaPrincipalState extends State<TelaPrincipal> {
               .snapshots(),
           builder: (context, perfil) {
             final dados = perfil.data?.data();
+            final perfilAtivo = dados?['ativo'] == true;
             final podeEditar =
-                dados?['ativo'] == true &&
+                perfilAtivo &&
                 (dados?['papel'] == 'editor' || dados?['papel'] == 'admin');
-            return _conteudo(podeEditar);
+            final igrejaIds = perfilAtivo
+                ? ((dados?['igrejaIds'] as List<dynamic>?) ?? const [])
+                      .map((id) => id.toString().trim())
+                      .where((id) => id.isNotEmpty)
+                      .toList()
+                : <String>[];
+            String? igrejaPadraoId;
+            if (perfilAtivo) {
+              igrejaPadraoId = dados?['igrejaPadraoId']?.toString().trim();
+            }
+            return _conteudo(
+              podeEditar: podeEditar,
+              igrejaIdsPermitidas: igrejaIds,
+              igrejaPadraoId: igrejaPadraoId?.isNotEmpty == true
+                  ? igrejaPadraoId!
+                  : 'ibij',
+            );
           },
         );
       },
     );
   }
 
-  Widget _conteudo(bool podeEditar) {
+  Widget _conteudo({
+    required bool podeEditar,
+    required List<String> igrejaIdsPermitidas,
+    required String igrejaPadraoId,
+  }) {
     return Scaffold(
       body: IndexedStack(
         index: _indice,
         children: [
           const TelaConsultaHinos(),
-          TelaCultos(podeEditar: podeEditar),
+          TelaCultos(
+            key: ValueKey(
+              'cultos:${igrejaIdsPermitidas.join(',')}:$igrejaPadraoId',
+            ),
+            podeEditar: podeEditar,
+            igrejaIdsPermitidas: igrejaIdsPermitidas,
+            igrejaPadraoId: igrejaPadraoId,
+          ),
           const TelaAcesso(),
         ],
       ),
