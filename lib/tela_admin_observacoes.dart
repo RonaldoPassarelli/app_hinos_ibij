@@ -5,9 +5,14 @@ import 'package:flutter/material.dart';
 import 'servico_busca_hinos.dart';
 
 class TelaAdminObservacoes extends StatefulWidget {
-  const TelaAdminObservacoes({super.key, required this.nomeUsuario});
+  const TelaAdminObservacoes({
+    super.key,
+    required this.nomeUsuario,
+    required this.igrejaId,
+  });
 
   final String nomeUsuario;
+  final String igrejaId;
 
   @override
   State<TelaAdminObservacoes> createState() => _TelaAdminObservacoesState();
@@ -26,7 +31,10 @@ class _TelaAdminObservacoesState extends State<TelaAdminObservacoes> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('cultos_v2').snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('cultos_v2')
+          .where('igrejaId', isEqualTo: widget.igrejaId)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {

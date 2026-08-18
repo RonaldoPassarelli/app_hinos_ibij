@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
 import 'tela_acesso.dart';
@@ -81,11 +82,26 @@ class _PortaAdministrativa extends StatelessWidget {
             }
 
             final nome = dados?['nome']?.toString().trim();
+            final igrejaIds =
+                ((dados?['igrejaIds'] as List<dynamic>?) ?? const [])
+                    .map((id) => id.toString().trim())
+                    .where((id) => id.isNotEmpty)
+                    .toList();
+            final igrejaPadraoId =
+                dados?['igrejaPadraoId']?.toString().trim() ?? '';
+            if (igrejaIds.isEmpty || igrejaPadraoId.isEmpty) {
+              return _TelaAcessoNegado(
+                usuario: usuario,
+                mensagem: 'Esta conta não possui uma igreja vinculada.',
+              );
+            }
             return TelaAdministrativa(
               nomeUsuario: nome?.isNotEmpty == true
                   ? nome!
                   : usuario.email ?? 'Usuário',
               papel: papel,
+              igrejaIds: igrejaIds,
+              igrejaPadraoId: igrejaPadraoId,
             );
           },
         );
@@ -161,10 +177,14 @@ class TelaAdministrativa extends StatefulWidget {
     super.key,
     required this.nomeUsuario,
     required this.papel,
+    required this.igrejaIds,
+    required this.igrejaPadraoId,
   });
 
   final String nomeUsuario;
   final String papel;
+  final List<String> igrejaIds;
+  final String igrejaPadraoId;
 
   @override
   State<TelaAdministrativa> createState() => _TelaAdministrativaState();
@@ -172,9 +192,74 @@ class TelaAdministrativa extends StatefulWidget {
 
 class _TelaAdministrativaState extends State<TelaAdministrativa> {
   var _indice = 0;
+  var _igrejas = <_OpcaoIgreja>[];
+  String? _igrejaSelecionadaId;
+  String? _erroIgrejas;
+  var _carregandoIgrejas = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarIgrejas();
+  }
+
+  Future<void> _carregarIgrejas() async {
+    try {
+      final consulta = await FirebaseFirestore.instance
+          .collection('igrejas')
+          .get();
+      final permitidas = widget.igrejaIds.toSet();
+      final igrejas =
+          consulta.docs
+              .where(
+                (documento) =>
+                    documento.data()['ativo'] == true &&
+                    permitidas.contains(documento.id),
+              )
+              .map(_OpcaoIgreja.fromDocumento)
+              .toList()
+            ..sort((a, b) => a.nomeCurto.compareTo(b.nomeCurto));
+
+      final preferencias = await SharedPreferences.getInstance();
+      final salva = preferencias.getString('igreja_selecionada_painel');
+      final idsDisponiveis = igrejas.map((igreja) => igreja.id).toSet();
+      String? selecionada;
+      if (igrejas.length == 1) {
+        selecionada = igrejas.first.id;
+      } else if (idsDisponiveis.contains(salva)) {
+        selecionada = salva;
+      } else if (idsDisponiveis.contains(widget.igrejaPadraoId)) {
+        selecionada = widget.igrejaPadraoId;
+      } else if (igrejas.isNotEmpty) {
+        selecionada = igrejas.first.id;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _igrejas = igrejas;
+        _igrejaSelecionadaId = selecionada;
+        _erroIgrejas = igrejas.isEmpty
+            ? 'Nenhuma igreja ativa está disponível para esta conta.'
+            : null;
+        _carregandoIgrejas = false;
+      });
+    } on FirebaseException catch (erro) {
+      if (!mounted) return;
+      setState(() {
+        _erroIgrejas = erro.message ?? erro.code;
+        _carregandoIgrejas = false;
+      });
+    }
+  }
+
+  Future<void> _selecionarIgreja(String igrejaId) async {
+    setState(() => _igrejaSelecionadaId = igrejaId);
+    final preferencias = await SharedPreferences.getInstance();
+    await preferencias.setString('igreja_selecionada_painel', igrejaId);
+  }
 
   List<_ItemPainel> get _itens {
-    final podeAdministrar = widget.papel == 'editor' || widget.papel == 'admin';
+    final podeAdministrar = widget.papel == 'admin';
     return [
       if (podeAdministrar) ...[
         const _ItemPainel(
@@ -231,11 +316,29 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
   }
 
   Widget _conteudo(_ItemPainel item) {
+    final igrejaId = _igrejaSelecionadaId;
+    if (_carregandoIgrejas) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_erroIgrejas != null || igrejaId == null) {
+      return _ModuloIndisponivel(
+        titulo: 'Igreja indisponível',
+        mensagem: _erroIgrejas ?? 'Nenhuma igreja foi selecionada.',
+        onTentarNovamente: _carregarIgrejas,
+      );
+    }
     return switch (item.id) {
       'hinos' => const TelaAdminHinos(),
-      'observacoes' => TelaAdminObservacoes(nomeUsuario: widget.nomeUsuario),
+      'observacoes' => TelaAdminObservacoes(
+        key: ValueKey('observacoes:$igrejaId'),
+        nomeUsuario: widget.nomeUsuario,
+        igrejaId: igrejaId,
+      ),
       'novo_hino' => TelaAdminNovoHino(nomeUsuario: widget.nomeUsuario),
-      'apresentacao' => const TelaApresentacao(),
+      'apresentacao' => TelaApresentacao(
+        key: ValueKey('apresentacao:$igrejaId'),
+        igrejaId: igrejaId,
+      ),
       _ => _ModuloFuturo(titulo: item.titulo),
     };
   }
@@ -277,6 +380,8 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
                 ),
               ),
               const SizedBox(height: 28),
+              _seletorIgreja(),
+              const SizedBox(height: 18),
               for (var indice = 0; indice < itens.length; indice++)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
@@ -316,6 +421,81 @@ class _TelaAdministrativaState extends State<TelaAdministrativa> {
       ),
     );
   }
+
+  Widget _seletorIgreja() {
+    if (_carregandoIgrejas) {
+      return const LinearProgressIndicator();
+    }
+    if (_erroIgrejas != null || _igrejaSelecionadaId == null) {
+      return ListTile(
+        leading: const Icon(Icons.error_outline),
+        title: const Text('Igreja indisponível'),
+        trailing: IconButton(
+          tooltip: 'Tentar novamente',
+          onPressed: _carregarIgrejas,
+          icon: const Icon(Icons.refresh),
+        ),
+      );
+    }
+    if (_igrejas.length == 1) {
+      final igreja = _igrejas.first;
+      return ListTile(
+        leading: const Icon(Icons.church_outlined),
+        title: Text(igreja.nomeCurto),
+        subtitle: Text(
+          igreja.nome,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+    }
+    return DropdownMenu<String>(
+      key: ValueKey(_igrejaSelecionadaId),
+      initialSelection: _igrejaSelecionadaId,
+      width: 222,
+      label: const Text('Igreja'),
+      leadingIcon: const Icon(Icons.church_outlined),
+      dropdownMenuEntries: _igrejas
+          .map(
+            (igreja) => DropdownMenuEntry<String>(
+              value: igreja.id,
+              label: igreja.nomeCurto,
+              labelWidget: Text(
+                '${igreja.nomeCurto} — ${igreja.nome}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          )
+          .toList(),
+      onSelected: (id) {
+        if (id != null) _selecionarIgreja(id);
+      },
+    );
+  }
+}
+
+class _OpcaoIgreja {
+  const _OpcaoIgreja({
+    required this.id,
+    required this.nome,
+    required this.nomeCurto,
+  });
+
+  factory _OpcaoIgreja.fromDocumento(
+    QueryDocumentSnapshot<Map<String, dynamic>> documento,
+  ) {
+    final dados = documento.data();
+    return _OpcaoIgreja(
+      id: documento.id,
+      nome: dados['nome']?.toString() ?? documento.id,
+      nomeCurto: dados['nomeCurto']?.toString() ?? documento.id,
+    );
+  }
+
+  final String id;
+  final String nome;
+  final String nomeCurto;
 }
 
 class _ItemPainel {
@@ -359,6 +539,45 @@ class _ModuloFuturo extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModuloIndisponivel extends StatelessWidget {
+  const _ModuloIndisponivel({
+    required this.titulo,
+    required this.mensagem,
+    required this.onTentarNovamente,
+  });
+
+  final String titulo;
+  final String mensagem;
+  final VoidCallback onTentarNovamente;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_outlined, size: 52),
+              const SizedBox(height: 16),
+              Text(titulo, style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 8),
+              Text(mensagem, textAlign: TextAlign.center),
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: onTentarNovamente,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Tentar novamente'),
+              ),
+            ],
           ),
         ),
       ),

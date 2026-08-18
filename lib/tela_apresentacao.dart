@@ -16,7 +16,9 @@ bool _mesmoDia(DateTime a, DateTime b) {
 }
 
 class TelaApresentacao extends StatefulWidget {
-  const TelaApresentacao({super.key});
+  const TelaApresentacao({super.key, required this.igrejaId});
+
+  final String igrejaId;
 
   @override
   State<TelaApresentacao> createState() => _TelaApresentacaoState();
@@ -47,7 +49,7 @@ class _TelaApresentacaoState extends State<TelaApresentacao> {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('cultos_v2')
-          .orderBy('dataHora')
+          .where('igrejaId', isEqualTo: widget.igrejaId)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
@@ -62,7 +64,12 @@ class _TelaApresentacaoState extends State<TelaApresentacao> {
           );
         }
 
-        final todos = snapshot.data?.docs ?? const [];
+        final todos = [...?snapshot.data?.docs]
+          ..sort((a, b) {
+            final dataA = a.data()['dataHora'] as Timestamp;
+            final dataB = b.data()['dataHora'] as Timestamp;
+            return dataA.compareTo(dataB);
+          });
         final cultos = _filtrarCultos(todos);
         final selecionado = _selecionar(cultos);
         return Column(
