@@ -2,31 +2,82 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function usuarioEditor() {
+    function usuarioAtivo() {
       return request.auth != null
         && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
-        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.ativo == true
-        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.papel in ['editor', 'admin'];
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.ativo == true;
+    }
+
+    function perfilAtual() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+
+    function usuarioAdmin() {
+      return usuarioAtivo() && perfilAtual().papel == 'admin';
+    }
+
+    function usuarioGerenciaCultos() {
+      return usuarioAtivo() && perfilAtual().papel in ['editor', 'admin'];
+    }
+
+    function usuarioPertenceIgreja(igrejaId) {
+      return usuarioAtivo()
+        && igrejaId is string
+        && perfilAtual().igrejaIds is list
+        && igrejaId in perfilAtual().igrejaIds;
+    }
+
+    function itemCorrespondeAoCulto(cultoId, igrejaId) {
+      return cultoId is string
+        && igrejaId is string
+        && exists(/databases/$(database)/documents/cultos_v2/$(cultoId))
+        && get(/databases/$(database)/documents/cultos_v2/$(cultoId)).data.igrejaId == igrejaId;
     }
 
     match /hinos_v2/{hinoId} {
       allow read: if true;
-      allow write: if usuarioEditor();
+      allow create, update, delete: if usuarioAdmin();
+    }
+
+    match /igrejas/{igrejaId} {
+      allow read: if true;
+      allow write: if false;
     }
 
     match /cultos_v2/{cultoId} {
       allow read: if true;
-      allow write: if usuarioEditor();
+      allow create: if usuarioGerenciaCultos()
+        && usuarioPertenceIgreja(request.resource.data.igrejaId);
+      allow update: if usuarioGerenciaCultos()
+        && request.resource.data.igrejaId == resource.data.igrejaId
+        && usuarioPertenceIgreja(resource.data.igrejaId);
+      allow delete: if usuarioGerenciaCultos()
+        && usuarioPertenceIgreja(resource.data.igrejaId);
     }
 
     match /itens_culto_v2/{itemId} {
       allow read: if true;
-      allow write: if usuarioEditor();
+      allow create: if usuarioGerenciaCultos()
+        && usuarioPertenceIgreja(request.resource.data.igrejaId)
+        && itemCorrespondeAoCulto(
+          request.resource.data.cultoId,
+          request.resource.data.igrejaId
+        );
+      allow update: if usuarioGerenciaCultos()
+        && request.resource.data.igrejaId == resource.data.igrejaId
+        && request.resource.data.cultoId == resource.data.cultoId
+        && usuarioPertenceIgreja(resource.data.igrejaId)
+        && itemCorrespondeAoCulto(
+          resource.data.cultoId,
+          resource.data.igrejaId
+        );
+      allow delete: if usuarioGerenciaCultos()
+        && usuarioPertenceIgreja(resource.data.igrejaId);
     }
 
     match /historico_hinos/{alteracaoId} {
-      allow read: if usuarioEditor();
-      allow create: if usuarioEditor()
+      allow read: if usuarioAdmin();
+      allow create: if usuarioAdmin()
         && request.resource.data.alteradoPorUid == request.auth.uid
         && request.resource.data.alteradoEm == request.time;
       allow update, delete: if false;
